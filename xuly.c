@@ -1,120 +1,259 @@
 /* =========================================================
- * Ten File : xuly.c
- * Mo ta    : Check-in, check-out, tim vi tri trong, tinh tien.
+ * Ten file : xuly.c
+ * Mo ta    : Hang doi, kiem tra bien so, BFS tim cho trong,
+ *            tinh phi, ghi lich su, xe vao, xe ra.
  * ========================================================= */
 #include "quanlybaixe.h"
 
-/*
- * Ten ham: TinhTien
- * Muc dich: Tinh phi bac thang. Xe may: 5k/4h dau, them 1k/h. O to: 20k/2h dau, them 5k/h.
- * Luu y test: Do chay thuc te, difftime() tra ve giay. 
- * Trong code nay dang tinh gia lap: Cu 1 giay chay thuc = 1 gio de de test nghiem thu.
- */
-double TinhTien(int loaiXe, double soGio) {
-    double tien = 0;
-    int gioLamTron = ceil(soGio); 
-    if(gioLamTron == 0) gioLamTron = 1; // Gui chua toi 1h (1s) tinh lam 1h
-
-    if(loaiXe == 1) { // Xe may
-        if(gioLamTron <= 4) tien = 5000;
-        else tien = 5000 + (gioLamTron - 4) * 1000;
-    } else { // O to
-        if(gioLamTron <= 2) tien = 20000;
-        else tien = 20000 + (gioLamTron - 2) * 5000;
-    }
-    return tien;
+/* ---------- Hang doi cho BFS ---------- */
+void initQueue(Queue *q) {
+    q->front = 0;
+    q->rear = 0;
 }
 
-/*
- * Ten ham: XeVao
- * Muc dich: Duyet mang 2 chieu theo hang truoc cot sau de tim vi tri trong gan nhat.
- */
-void XeVao(TheXe baiOto[][MAX_COT_OTO], TheXe baiXeMay[][MAX_COT_XEMAY], int loaiXe, char* bienSo) {
-    if(loaiXe == 2) { // Xu ly O to
-        for(int i = 0; i < MAX_HANG_OTO; i++) {
-            for(int j = 0; j < MAX_COT_OTO; j++) {
-                if(baiOto[i][j].trangThai == 0) { // Gap o trong dau tien
-                    baiOto[i][j].trangThai = 1;
-                    strcpy(baiOto[i][j].bienSo, bienSo);
-                    baiOto[i][j].loaiXe = loaiXe;
-                    baiOto[i][j].thoiGianVao = time(NULL);
-                    
-                    char buf[30];
-                    FormatThoiGian(baiOto[i][j].thoiGianVao, buf);
-                    printf(">> Da dieu huong O TO [%s] vao vi tri [%d][%d] luc %s\n", bienSo, i, j, buf);
-                    return;
-                }
+int isEmpty(Queue *q) {
+    return q->front == q->rear;
+}
+
+void pushQueue(Queue *q, Point p) {
+    q->data[q->rear++] = p;
+}
+
+Point popQueue(Queue *q) {
+    return q->data[q->front++];
+}
+
+/* ---------- Kiem tra bien so ---------- */
+int isKyTuSeriHopLe(char c) {
+    c = toupper(c);
+    // Cac chu cai bi loai tru: I, O, Q, R, W
+    if (c == 'I' || c == 'O' || c == 'Q' ||
+        c == 'R' || c == 'W') return 0;
+    if (c >= 'A' && c <= 'Z') return 1;
+    return 0;
+}
+
+int isMaTinhHopLe(int ma) {
+    for (int i = 0; i < SO_LUONG_MA_TINH; i++) {
+        if (MA_TINH_VALID[i] == ma) return 1;
+    }
+    return 0;
+}
+
+int kiemTraBienSoHopLe(const char *bienSo, LoaiXe loai) {
+    int len = strlen(bienSo);
+    if (len < 6 || len > 12) return 0;
+
+    // 1. Kiem tra 2 chu so ma tinh
+    if (!isdigit(bienSo[0]) || !isdigit(bienSo[1])) return 0;
+    int maTinh = (bienSo[0]-'0')*10 + (bienSo[1]-'0');
+    if (!isMaTinhHopLe(maTinh)) return 0;
+
+    int idx = 2;
+    // 2. Kiem tra se-ri chu cai theo loai xe
+    if (loai == O_TO) {
+        if (!isKyTuSeriHopLe(bienSo[idx])) return 0;
+        idx += 1;
+    } else {
+        if (!isKyTuSeriHopLe(bienSo[idx]) ||
+            !isKyTuSeriHopLe(bienSo[idx + 1])) return 0;
+        idx += 2;
+    }
+
+    // 3. Bo qua dau gach ngang '-' neu co
+    if (bienSo[idx] == '-') idx++;
+
+    // 4. Kiem tra phan chu so con lai
+    int countDigits = 0;
+    while (idx < len) {
+        if (isdigit(bienSo[idx])) countDigits++;
+        else if (bienSo[idx] != '.') return 0;
+        idx++;
+    }
+    if (countDigits < 4 || countDigits > 5) return 0;
+    return 1;
+}
+
+/* ---------- BFS tim o trong gan cong nhat ---------- */
+int timViTriTrongGanNhat(LoaiXe loai, int *outR, int *outC) {
+    int maxR = (loai == O_TO) ? ROW_OTO : ROW_XEMAY;
+    int maxC = (loai == O_TO) ? COL_OTO : COL_XEMAY;
+    int visited[10][10] = {0};
+
+    Queue q;
+    initQueue(&q);
+    Point pStart = {0, 0};
+    pushQueue(&q, pStart);
+    visited[0][0] = 1;
+
+    int dr[] = {-1, 1, 0, 0};   // len, xuong, trai, phai
+    int dc[] = {0, 0, -1, 1};
+
+    while (!isEmpty(&q)) {
+        Point curr = popQueue(&q);
+
+        int isOccupied = (loai == O_TO)
+            ? gridOTo[curr.r][curr.c]
+            : gridXeMay[curr.r][curr.c];
+        if (isOccupied == 0) {
+            *outR = curr.r;
+            *outC = curr.c;
+            return 1;
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            int nr = curr.r + dr[i];
+            int nc = curr.c + dc[i];
+            if (nr >= 0 && nr < maxR && nc >= 0 && nc < maxC
+                && !visited[nr][nc]) {
+                visited[nr][nc] = 1;
+                Point nextP = {nr, nc};
+                pushQueue(&q, nextP);
             }
         }
-        printf(">> Bai O TO da day!\n");
-    } 
-    else if (loaiXe == 1) { // Xu ly Xe may
-        for(int i = 0; i < MAX_HANG_XEMAY; i++) {
-            for(int j = 0; j < MAX_COT_XEMAY; j++) {
-                if(baiXeMay[i][j].trangThai == 0) {
-                    baiXeMay[i][j].trangThai = 1;
-                    strcpy(baiXeMay[i][j].bienSo, bienSo);
-                    baiXeMay[i][j].loaiXe = loaiXe;
-                    baiXeMay[i][j].thoiGianVao = time(NULL);
-                    
-                    char buf[30];
-                    FormatThoiGian(baiXeMay[i][j].thoiGianVao, buf);
-                    printf(">> Da dieu huong XE MAY [%s] vao vi tri [%d][%d] luc %s\n", bienSo, i, j, buf);
-                    return;
-                }
-            }
-        }
-        printf(">> Bai XE MAY da day!\n");
+    }
+    return 0;   // khong con o trong
+}
+
+/* ---------- Tinh phi ---------- */
+long long tinhPhi(LoaiXe loai, double soGio) {
+    int gioTron = (int)ceil(soGio);
+    if (gioTron <= 0) gioTron = 1;
+
+    if (gioTron <= 2) {
+        return 0;
+    }
+    int gioPhuTroi = gioTron - 2;
+
+    if (loai == XE_MAY) {
+        return (long long)gioPhuTroi * 5000;
+    } else {
+        return (long long)gioPhuTroi * 10000;
     }
 }
 
-/*
- * Ten ham: XeRa
- * Muc dich: Tim kiem xe, dung difftime tinh thoi gian do, thanh toan va giai phong bo nho.
- */
-void XeRa(TheXe baiOto[][MAX_COT_OTO], TheXe baiXeMay[][MAX_COT_XEMAY], char* bienSo) {
-    time_t timeRa = time(NULL);
-    
-    // Tim trong bai O to
-    for(int i = 0; i < MAX_HANG_OTO; i++) {
-        for(int j = 0; j < MAX_COT_OTO; j++) {
-            if(baiOto[i][j].trangThai == 1 && strcmp(baiOto[i][j].bienSo, bienSo) == 0) {
-                double soGiay = difftime(timeRa, baiOto[i][j].thoiGianVao);
-                double tien = TinhTien(2, soGiay); 
-                
-                printf("\n--- HOA DON THANH TOAN ---\n");
-                printf("Bien so: %s (O to)\n", bienSo);
-                printf("Thoi gian gui: %.0f gio (demo so giay)\n", soGiay);
-                printf("Tong tien: %.0f VND\n", tien);
-                
-                GhiLichSu(bienSo, 2, baiOto[i][j].thoiGianVao, timeRa, tien);
-                
-                // Giai phong o do
-                baiOto[i][j].trangThai = 0; 
-                return;
-            }
+/* ---------- Ghi lich su ra tep ---------- */
+void ghiLichSuFile(TheXe tx, long long tienPhi) {
+    FILE *f = fopen("lich_su_bai_xe.txt", "a");
+    if (f != NULL) {
+        char tVao[80], tRa[80];
+        struct tm *tmVao = localtime(&tx.thoiGianVao);
+        strftime(tVao, sizeof(tVao), "%Y-%m-%d %H:%M:%S", tmVao);
+        struct tm *tmRa = localtime(&tx.thoiGianRa);
+        strftime(tRa, sizeof(tRa), "%Y-%m-%d %H:%M:%S", tmRa);
+
+        fprintf(f, "Ma the: %s | Bien so: %s | Loai: %s | "
+                   "Vao: %s | Ra: %s | Phi: %lld VND\n",
+                tx.maThe, tx.bienSo,
+                (tx.loaiXe == O_TO ? "O to" : "Xe may"),
+                tVao, tRa, tienPhi);
+        fclose(f);
+    }
+}
+
+/* ---------- Xe vao bai ---------- */
+void xeVao(void) {
+    if (tongSoXeAcc >= MAX_XE) {
+        printf("\nLOI: He thong da dat gioi han "
+               "luu tru du lieu!\n");
+        return;
+    }
+    TheXe tx;
+    printf("Nhap ma the xe: ");
+    scanf("%s", tx.maThe);
+
+    for (int i = 0; i < tongSoXeAcc; i++) {
+        if (strcmp(danhSachThe[i].maThe, tx.maThe) == 0
+            && danhSachThe[i].dangTrongBai) {
+            printf("LOI: Ma the dang duoc su dung trong bai!\n");
+            return;
         }
     }
-    
-    // Tim trong bai Xe may
-    for(int i = 0; i < MAX_HANG_XEMAY; i++) {
-        for(int j = 0; j < MAX_COT_XEMAY; j++) {
-            if(baiXeMay[i][j].trangThai == 1 && strcmp(baiXeMay[i][j].bienSo, bienSo) == 0) {
-                double soGiay = difftime(timeRa, baiXeMay[i][j].thoiGianVao);
-                double tien = TinhTien(1, soGiay);
-                
-                printf("\n--- HOA DON THANH TOAN ---\n");
-                printf("Bien so: %s (Xe may)\n", bienSo);
-                printf("Thoi gian gui: %.0f gio (demo so giay)\n", soGiay);
-                printf("Tong tien: %.0f VND\n", tien);
-                
-                GhiLichSu(bienSo, 1, baiXeMay[i][j].thoiGianVao, timeRa, tien);
-                
-                baiXeMay[i][j].trangThai = 0;
-                return;
-            }
+
+    int loai;
+    printf("Loai xe (1: Xe may, 2: O to): ");
+    if (scanf("%d", &loai) != 1 || (loai != 1 && loai != 2)) {
+        printf("LOI: Loai xe khong hop le!\n");
+        while (getchar() != '\n');   // xoa bo dem nhap
+        return;
+    }
+    tx.loaiXe = (LoaiXe)loai;
+
+    printf("Nhap bien so xe (VD: 29A-567.89 hoac 29AB-123.45): ");
+    scanf("%s", tx.bienSo);
+    if (!kiemTraBienSoHopLe(tx.bienSo, tx.loaiXe)) {
+        printf("LOI: Bien so xe khong hop le theo quy dinh!\n");
+        printf("Luu y:\n");
+        printf("- Ma tinh gom 2 chu so va phai thuoc danh sach quy dinh.\n");
+        printf("- O to co 1 chu cai se-ri, xe may co 2 chu cai se-ri.\n");
+        printf("- Phan so gom 4 den 5 chu so (co the co dau '-' va '.').\n");
+        return;
+    }
+
+    int r, c;
+    if (!timViTriTrongGanNhat(tx.loaiXe, &r, &c)) {
+        printf("RAT TIEC: Khu vuc do xe nay da DAY!\n");
+        return;
+    }
+    tx.rowPos = r;
+    tx.colPos = c;
+    if (tx.loaiXe == O_TO) gridOTo[r][c] = 1;
+    else gridXeMay[r][c] = 1;
+
+    tx.thoiGianVao = time(NULL);
+    tx.dangTrongBai = 1;
+    danhSachThe[tongSoXeAcc++] = tx;
+
+    char timeBuf[80];
+    struct tm *tmInfo = localtime(&tx.thoiGianVao);
+    strftime(timeBuf, sizeof(timeBuf),
+             "%Y-%m-%d %H:%M:%S", tmInfo);
+    printf("=> CHAP NHAN XE VAO!\n");
+    printf("- Bien so: %s (Hop le)\n", tx.bienSo);
+    printf("- Thoi gian vao: %s\n", timeBuf);
+    printf("- Dieu huong vi tri do: Khu %s -> Hang %d, Cot %d\n",
+           (tx.loaiXe == O_TO ? "O to" : "Xe may"), r + 1, c + 1);
+}
+
+/* ---------- Xe ra bai ---------- */
+void xeRa(void) {
+    char maThe[20];
+    printf("Quet ma the xe: ");
+    scanf("%s", maThe);
+
+    for (int i = 0; i < tongSoXeAcc; i++) {
+        if (strcmp(danhSachThe[i].maThe, maThe) == 0
+            && danhSachThe[i].dangTrongBai) {
+            danhSachThe[i].thoiGianRa = time(NULL);
+            danhSachThe[i].dangTrongBai = 0;
+
+            if (danhSachThe[i].loaiXe == O_TO)
+                gridOTo[danhSachThe[i].rowPos]
+                       [danhSachThe[i].colPos] = 0;
+            else
+                gridXeMay[danhSachThe[i].rowPos]
+                         [danhSachThe[i].colPos] = 0;
+
+            double soGiay = difftime(danhSachThe[i].thoiGianRa,
+                                     danhSachThe[i].thoiGianVao);
+            double soGio = soGiay / 3600.0;
+
+            long long tienPhi =
+                tinhPhi(danhSachThe[i].loaiXe, soGio);
+            tongDoanhThu += tienPhi;
+            tongLuotXeHoanThanh++;
+
+            printf("=> XAC NHAN XE RA!\n");
+            printf("- Bien so: %s\n", danhSachThe[i].bienSo);
+            printf("- Thoi gian gui: %.2f gio "
+                   "(%d giay thuc te)\n",
+                   soGio, (int)soGiay);
+            printf("- Phi gui xe: %lld VND\n", tienPhi);
+
+            ghiLichSuFile(danhSachThe[i], tienPhi);
+            return;
         }
     }
-    
-    printf(">> Khong tim thay xe co bien so %s trong bai!\n", bienSo);
+    printf("LOI: Khong tim thay thong tin xe "
+           "tuong ung trong bai!\n");
 }
