@@ -1,85 +1,52 @@
 /* =========================================================
- * Ten File : main.c
- * Mo ta    : Ham main, menu dieu huong va ghi file lich su.
+ * Ten file : main.c
+ * Mo ta    : Dinh nghia bien toan cuc, ham main va menu chinh.
+ * Bien dich: gcc -Wall main.c xuly.c hienthi.c -o baixe -lm
  * ========================================================= */
 #include "quanlybaixe.h"
 
-/* 
- * Ten ham: GhiLichSu
- * Muc dich: Ghi thong tin luot xe ra vao file txt de luu tru.
- */
-void GhiLichSu(char* bienSo, int loaiXe, time_t vao, time_t ra, double tien) {
-    FILE *f = fopen("lich_su.txt", "a");
-    if (f == NULL) {
-        printf("Loi: Khong the mo file lich_su.txt!\n");
-        return;
-    }
-    char bufVao[30], bufRa[30];
-    FormatThoiGian(vao, bufVao);
-    FormatThoiGian(ra, bufRa);
-    
-    fprintf(f, "Bien so: %s | Loai: %d | Vao: %s | Ra: %s | Phi: %.0f VND\n", 
-            bienSo, loaiXe, bufVao, bufRa, tien);
-    fclose(f);
-}
+/* ---------- Bien toan cuc ---------- */
+int gridOTo[ROW_OTO][COL_OTO] = {0};
+int gridXeMay[ROW_XEMAY][COL_XEMAY] = {0};
+TheXe danhSachThe[MAX_XE];
+int tongSoXeAcc = 0;
+long long tongDoanhThu = 0;
+int tongLuotXeHoanThanh = 0;
 
-void KhoiTaoBaiXe(TheXe baiOto[][MAX_COT_OTO], TheXe baiXeMay[][MAX_COT_XEMAY]) {
-    // Reset toan bo mang 2 chieu ve trang thai 0 (Trong)
-    for(int i = 0; i < MAX_HANG_OTO; i++)
-        for(int j = 0; j < MAX_COT_OTO; j++)
-            baiOto[i][j].trangThai = 0;
-            
-    for(int i = 0; i < MAX_HANG_XEMAY; i++)
-        for(int j = 0; j < MAX_COT_XEMAY; j++)
-            baiXeMay[i][j].trangThai = 0;
-}
+/* 80 ma tinh/thanh pho hop le */
+const int MA_TINH_VALID[] = {
+    11, 12, 14, 15, 16, 17, 18, 19, 20, 21,
+    22, 23, 24, 25, 26, 27, 28, 29, 30, 31,
+    32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
+    43, 47, 48, 49, 50, 51, 52, 53, 54, 55,
+    56, 57, 58, 59, 60, 61, 62, 63, 64, 65,
+    66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
+    76, 77, 78, 79, 80, 81, 82, 83, 84, 85,
+    86, 88, 89, 90, 92, 93, 94, 95, 97, 98
+};
+const int SO_LUONG_MA_TINH = sizeof(MA_TINH_VALID) / sizeof(MA_TINH_VALID[0]);
 
+/* ---------- Ham main ---------- */
 int main() {
-    TheXe baiOto[MAX_HANG_OTO][MAX_COT_OTO];
-    TheXe baiXeMay[MAX_HANG_XEMAY][MAX_COT_XEMAY];
-    KhoiTaoBaiXe(baiOto, baiXeMay);
-
-    int luaChon, loaiXe;
-    char bienSo[20];
-
+    int luaChon;
     do {
-        printf("\n=== HE THONG QUAN LY BAI DO XE THONG MINH ===\n");
-        printf("1. Xe vao bai\n");
-        printf("2. Xe ra bai (Tinh tien)\n");
-        printf("3. Xem so do bai do\n");
-        printf("4. Xem thong ke ca truc\n");
+        printf("\n========= HE THONG QUAN LY BAI DO XE THONG MINH =========\n");
+        printf("1. Xe vao bai (Quet the & Dieu huong)\n");
+        printf("2. Xe ra bai (Tinh phi & Giai phong o do)\n");
+        printf("3. Xem so do bai do xe (Truc quan)\n");
+        printf("4. Thong ke ca truc & Doanh thu\n");
         printf("0. Thoat chuong trinh\n");
-        printf("Nhap lua chon: ");
+        printf("Lua chon cua ban: ");
         scanf("%d", &luaChon);
-        fflush(stdin);
 
         switch (luaChon) {
-            case 1:
-                printf("Chon loai xe (1 - Xe may, 2 - O to): ");
-                scanf("%d", &loaiXe);
-                fflush(stdin);
-                printf("Nhap bien so xe: ");
-                gets(bienSo);
-                XeVao(baiOto, baiXeMay, loaiXe, bienSo);
-                break;
-            case 2:
-                printf("Nhap bien so xe can lay: ");
-                gets(bienSo);
-                XeRa(baiOto, baiXeMay, bienSo);
-                break;
-            case 3:
-                InSoDo(baiOto, baiXeMay);
-                break;
-            case 4:
-                InThongKe(baiOto, baiXeMay);
-                break;
-            case 0:
-                printf("Da thoat he thong.\n");
-                break;
-            default:
-                printf("Lua chon khong hop le!\n");
+            case 1: xeVao(); break;
+            case 2: xeRa(); break;
+            case 3: hienThiSoDo(); break;
+            case 4: thongKeCaTruc(); break;
+            case 0: break;
+            default: printf("Lua chon khong hop le, vui long thu lai!\n");
         }
     } while (luaChon != 0);
-
     return 0;
 }
